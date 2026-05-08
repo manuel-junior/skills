@@ -2,6 +2,8 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 import 'dart:io';
+import 'package:args/args.dart';
+import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 
@@ -62,6 +64,8 @@ Future<List<String>> getModifiedFilesInternal({
 
     // git status --porcelain output format starts with "XY path".
     // where XY is the 2-character status.
+    // With -z, entries are NUL-separated and paths are not escaped.
+    // This handles spaces in filenames correctly.
     if (entry.length < 4) {
       continue;
     }
@@ -70,7 +74,8 @@ Future<List<String>> getModifiedFilesInternal({
     String filePath = entry.substring(3);
 
     // For renames (R) and copies (C) with -z, the next NUL-terminated
-    // string contains the new path. We skip the original path.
+    // string contains the new path. We skip the original path and take
+    // the destination path to run checks on the new file.
     if (status.startsWith('R') || status.startsWith('C')) {
       if (i + 1 < entries.length) {
         filePath = entries[++i];
@@ -95,4 +100,54 @@ Future<List<String>> getModifiedFilesInternal({
     }
   }
   return modifiedFiles;
+}
+
+/// Helper to run the main entry point of a hook script.
+Future<void> runHookMain({
+  required List<String> args,
+  required String logFileName,
+  required Future<void> Function(String source, Future<void> Function(String) logToFile)
+  executeHook,
+}) async {
+  // Parse arguments
+  final parser = ArgParser()
+    ..addOption('source', help: 'The source of the trigger (e.g., manual, pre-commit)')
+    ..addFlag('log', help: 'Enable logging to file');
+
+  final ArgResults argResults;
+  try {
+    argResults = parser.parse(args);
+  } catch (e) {
+    stderr.writeln('ERROR: Invalid arguments: $e');
+    stderr.writeln(parser.usage);
+    exit(1);
+  }
+
+  final String triggerSource = (argResults['source'] as String?) ?? 'MANUAL';
+  final enableLogging = argResults['log'] as bool;
+
+  // Set up logging to the current directory (where script was run)
+  final String logFilePath = path.join(Directory.current.path, logFileName);
+  final logFile = File(logFilePath);
+
+  Logger.root.level = Level.ALL;
+  Logger.root.onRecord.listen((record) {
+    final message = '${record.time.toIso8601String()} [${record.level.name}] ${record.message}';
+    if (enableLogging) {
+      logFile.writeAsStringSync('$message\n', mode: FileMode.append);
+    }
+  });
+
+  final logger = Logger('HookMain');
+  logger.info('Starting hook in ${Directory.current.path}');
+
+  if (path.basename(Directory.current.path) != '.agents') {
+    logger.warning('This script is expected to be run from the .agents directory.');
+  }
+
+  Future<void> logToFile(String message) async {
+    logger.info(message);
+  }
+
+  await executeHook(triggerSource, logToFile);
 }

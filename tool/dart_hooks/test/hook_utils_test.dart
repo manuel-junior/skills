@@ -4,7 +4,9 @@
 
 import 'dart:io';
 import 'package:dart_hooks/src/hook_utils.dart';
+
 import 'package:test/test.dart';
+import 'test_utils.dart';
 
 void main() {
   group('hook_utils Tests', () {
@@ -46,6 +48,57 @@ void main() {
       // We expect to find both files, even the one outside tool/dart_hooks.
       expect(files, contains('/repo/tool/dart_hooks/lib/src/hook_utils.dart'));
       expect(files, contains('/repo/lib/main.dart'));
+    });
+
+    test('getModifiedFilesInternal handles renames correctly', () async {
+      const packageRoot = '/repo/tool/dart_hooks';
+      const repoRoot = '/repo';
+
+      final List<String> files = await getModifiedFilesInternal(
+        runProcess: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
+          if (cmd == 'git' && args.first == 'status') {
+            return ProcessResult(0, 0, 'R  lib/old.dart\x00lib/new.dart\x00', '');
+          }
+          return ProcessResult(0, 0, '', '');
+        }).run,
+        packageRoot: packageRoot,
+        repoRoot: repoRoot,
+        fileExists: (path) => true,
+        allowedExtensions: ['.dart'],
+      );
+
+      expect(files, contains('/repo/lib/new.dart'));
+      expect(files, isNot(contains('/repo/lib/old.dart')));
+    });
+
+    test('getModifiedFilesInternal handles spaces in filenames', () async {
+      const packageRoot = '/repo/tool/dart_hooks';
+      const repoRoot = '/repo';
+
+      final List<String> files = await getModifiedFilesInternal(
+        runProcess: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
+          if (cmd == 'git' && args.first == 'status') {
+            return ProcessResult(0, 0, 'M  lib/my file.dart\x00', '');
+          }
+          return ProcessResult(0, 0, '', '');
+        }).run,
+        packageRoot: packageRoot,
+        repoRoot: repoRoot,
+        fileExists: (path) => true,
+        allowedExtensions: ['.dart'],
+      );
+
+      expect(files, contains('/repo/lib/my file.dart'));
     });
   });
 }

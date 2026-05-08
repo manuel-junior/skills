@@ -5,8 +5,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dart_hooks/src/dart_format_hook.dart';
+
 import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
+import 'test_utils.dart';
 
 void main() {
   group('DartFormatHook Integration Tests', () {
@@ -50,7 +52,12 @@ void main() {
       int? exitCode;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) {
           // Delegate to real Process.run but force workingDirectory to repoRoot
           return Process.run(
             cmd,
@@ -58,7 +65,7 @@ void main() {
             runInShell: runInShell,
             workingDirectory: workingDirectory ?? repoRoot,
           );
-        },
+        }),
         fileExists: (p) => File(p).existsSync(),
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async {},
@@ -69,10 +76,15 @@ void main() {
       await Process.run('git', ['add', 'test.dart'], workingDirectory: repoRoot, runInShell: true);
 
       // Run the hook
-      await hook.run([], repoRoot);
+      await hook.run(
+        args: [],
+        currentPath: repoRoot,
+        packageRoot: repoRoot,
+        triggerSource: 'MANUAL',
+      );
 
       // Verify JSON output
-      expect(stdoutMessage, equals(jsonEncode({})));
+      expect(stdoutMessage, equals(jsonEncode({'decision': 'stop'})));
       expect(exitCode, equals(0));
 
       // Verify file was formatted
@@ -91,7 +103,12 @@ void main() {
       }
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 0, repoRoot, '');
           }
@@ -99,7 +116,7 @@ void main() {
             return ProcessResult(0, 0, '', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (p) => true,
         printStdout: (msg) {},
         logToFile: testLog,
@@ -107,14 +124,24 @@ void main() {
       );
 
       // Run it first time
-      await hook.run([], repoRoot);
+      await hook.run(
+        args: [],
+        currentPath: repoRoot,
+        packageRoot: repoRoot,
+        triggerSource: 'MANUAL',
+      );
 
       expect(logFile.existsSync(), isTrue);
       final List<String> linesFirstRun = await logFile.readAsLines();
       expect(linesFirstRun.length, equals(2)); // Start + No files found
 
       // Run it second time to verify append
-      await hook.run([], repoRoot);
+      await hook.run(
+        args: [],
+        currentPath: repoRoot,
+        packageRoot: repoRoot,
+        triggerSource: 'MANUAL',
+      );
 
       final List<String> linesSecondRun = await logFile.readAsLines();
       expect(linesSecondRun.length, equals(4)); // Appended 2 more lines
@@ -145,14 +172,19 @@ void main() {
       int? exitCode;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) {
           return Process.run(
             cmd,
             args,
             runInShell: runInShell,
             workingDirectory: workingDirectory ?? repoRoot,
           );
-        },
+        }),
         fileExists: (p) => File(p).existsSync(),
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async {},
@@ -160,10 +192,15 @@ void main() {
       );
 
       // Run the hook
-      await hook.run([], repoRoot);
+      await hook.run(
+        args: [],
+        currentPath: repoRoot,
+        packageRoot: repoRoot,
+        triggerSource: 'MANUAL',
+      );
 
       // Verify JSON output
-      expect(stdoutMessage, equals(jsonEncode({})));
+      expect(stdoutMessage, equals(jsonEncode({'decision': 'stop'})));
       expect(exitCode, equals(0));
 
       // Verify modified file was formatted

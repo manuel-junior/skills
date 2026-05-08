@@ -5,7 +5,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dart_hooks/src/dart_analyze_hook.dart';
+
 import 'package:test/test.dart';
+import 'test_utils.dart';
 
 void main() {
   group('DartAnalyzeHook Unit Tests', () {
@@ -13,18 +15,28 @@ void main() {
       String? loggedMessage;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'status') {
             return ProcessResult(0, 0, '', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         logToFile: (msg) async => loggedMessage = "${loggedMessage ?? ''}$msg\n",
         onExit: (code) {},
       );
 
-      await hook.run(['--source', 'hook'], '/current/path', '/package/root');
+      await hook.run(
+        args: ['--source', 'hook'],
+        currentPath: '/current/path',
+        packageRoot: '/package/root',
+        triggerSource: 'HOOK',
+      );
 
       expect(loggedMessage, contains('(Trigger: HOOK)'));
     });
@@ -34,7 +46,12 @@ void main() {
       int? exitCode;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'status') {
             return ProcessResult(0, 0, 'M  lib/file.dart\x00', '');
           }
@@ -42,14 +59,19 @@ void main() {
             return ProcessResult(0, 0, 'No issues found.', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path', '/package/root');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/package/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(stdoutMessage, equals(jsonEncode({'decision': 'stop'})));
       expect(exitCode, equals(0));
@@ -60,7 +82,12 @@ void main() {
       int? exitCode;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'status') {
             return ProcessResult(0, 0, 'M  lib/file.dart\x00', '');
           }
@@ -68,14 +95,19 @@ void main() {
             return ProcessResult(0, 1, 'Issue found.', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path', '/package/root');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/package/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(stdoutMessage, contains('"decision":"continue"'));
       expect(exitCode, equals(0));
@@ -86,7 +118,12 @@ void main() {
       List<String>? dartAnalyzeArgs;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'status') {
             return ProcessResult(0, 0, 'M  lib/my file.dart\x00M  lib/other.dart\x00', '');
           }
@@ -95,14 +132,19 @@ void main() {
             return ProcessResult(0, 0, 'No issues found.', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path', '/package/root');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/package/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(dartAnalyzeArgs, contains('/package/root/lib/my file.dart'));
       expect(dartAnalyzeArgs, contains('/package/root/lib/other.dart'));
@@ -113,16 +155,26 @@ void main() {
       int? exitCode;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           throw Exception('Simulated crash');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path', '/package/root');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/package/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(exitCode, equals(1));
     });

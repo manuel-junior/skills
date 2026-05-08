@@ -5,7 +5,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dart_hooks/src/dart_format_hook.dart';
+
 import 'package:test/test.dart';
+import 'test_utils.dart';
 
 void main() {
   group('DartFormatHook Unit Tests', () {
@@ -13,7 +15,12 @@ void main() {
       String? loggedMessage;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 0, '/repo/root', '');
           }
@@ -21,13 +28,18 @@ void main() {
             return ProcessResult(0, 0, '', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async => loggedMessage = msg,
       );
 
-      await hook.run(['--source', 'hook'], '/current/path');
+      await hook.run(
+        args: ['--source', 'hook'],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'HOOK',
+      );
 
       expect(loggedMessage, contains('(Trigger: HOOK)'));
     });
@@ -36,17 +48,27 @@ void main() {
       String? loggedMessage;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 0, '/repo/root', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         logToFile: (msg) async => loggedMessage = msg,
       );
 
-      await hook.run([], '/current/path');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(loggedMessage, contains('(Trigger: MANUAL)'));
     });
@@ -56,7 +78,12 @@ void main() {
       int? exitCode;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 0, '/repo/root', '');
           }
@@ -67,16 +94,21 @@ void main() {
             return ProcessResult(0, 0, 'Formatted file.dart', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'MANUAL',
+      );
 
-      expect(stdoutMessage, equals(jsonEncode({})));
+      expect(stdoutMessage, equals(jsonEncode({'decision': 'stop'})));
       expect(exitCode, equals(0));
     });
 
@@ -85,7 +117,12 @@ void main() {
       List<String>? dartFormatArgs;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 0, '/repo/root', '');
           }
@@ -97,14 +134,19 @@ void main() {
             return ProcessResult(0, 0, 'Formatted files', '');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(dartFormatArgs, contains('/repo/root/lib/my file.dart'));
       expect(dartFormatArgs, contains('/repo/root/lib/other.dart'));
@@ -115,16 +157,26 @@ void main() {
       int? exitCode;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           throw Exception('Simulated crash');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(exitCode, equals(1));
     });
@@ -133,19 +185,29 @@ void main() {
       int? exitCode;
 
       final hook = DartFormatHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'git' && args.first == 'rev-parse') {
             return ProcessResult(0, 1, '', 'Git error');
           }
           return ProcessResult(0, 0, '', '');
-        },
+        }),
         fileExists: (path) => true,
         printStdout: (msg) {},
         logToFile: (msg) async {},
         onExit: (code) => exitCode = code,
       );
 
-      await hook.run([], '/current/path');
+      await hook.run(
+        args: [],
+        currentPath: '/current/path',
+        packageRoot: '/repo/root',
+        triggerSource: 'MANUAL',
+      );
 
       expect(exitCode, equals(1));
     });

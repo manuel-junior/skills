@@ -5,8 +5,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dart_hooks/src/dart_analyze_hook.dart';
+
 import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
+import 'test_utils.dart';
 
 void main() {
   group('DartAnalyzeHook Integration Tests', () {
@@ -81,14 +83,19 @@ environment:
       final List<String> logs = [];
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) {
           return Process.run(
             cmd,
             args,
             runInShell: runInShell,
             workingDirectory: workingDirectory ?? packageRoot,
           );
-        },
+        }),
         fileExists: (p) => File(p).existsSync(),
         printStdout: (msg) => stdoutMessage = msg,
         logToFile: (msg) async => logs.add(msg),
@@ -98,7 +105,12 @@ environment:
       // Run the hook from a simulated .agents directory inside packageRoot
       final String agentsDir = path.join(packageRoot, '.agents');
 
-      await hook.run([], agentsDir, packageRoot);
+      await hook.run(
+        args: [],
+        currentPath: agentsDir,
+        packageRoot: packageRoot,
+        triggerSource: 'MANUAL',
+      );
 
       // Verify JSON output
       expect(stdoutMessage, equals(jsonEncode({'decision': 'stop'}))); // Success decision
@@ -133,7 +145,12 @@ environment:
       List<String>? dartAnalyzeArgs;
 
       final hook = DartAnalyzeHook(
-        runProcess: (cmd, args, {bool runInShell = false, String? workingDirectory}) async {
+        processRunner: MockProcessRunner((
+          String cmd,
+          List<String> args, {
+          bool runInShell = false,
+          String? workingDirectory,
+        }) async {
           if (cmd == 'dart' && args.first == 'analyze') {
             dartAnalyzeArgs = args;
             return ProcessResult(0, 0, 'No issues found.', '');
@@ -145,7 +162,7 @@ environment:
             runInShell: runInShell,
             workingDirectory: workingDirectory ?? packageRoot,
           );
-        },
+        }),
         fileExists: (p) => File(p).existsSync(),
         printStdout: (msg) {},
         logToFile: (msg) async {},
@@ -153,7 +170,12 @@ environment:
       );
 
       final String agentsDir = path.join(packageRoot, '.agents');
-      await hook.run([], agentsDir, packageRoot);
+      await hook.run(
+        args: [],
+        currentPath: agentsDir,
+        packageRoot: packageRoot,
+        triggerSource: 'MANUAL',
+      );
 
       expect(dartAnalyzeArgs, isNotNull);
       expect(dartAnalyzeArgs!.any((arg) => arg.endsWith('lib/modified.dart')), isTrue);
